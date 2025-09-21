@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flower Ring Galaxy</title>
+    <style>
+        body { 
+            margin: 0; 
+            background: #000000;
+            overflow: hidden; 
+            font-family: Arial, sans-serif;
+        }
+        canvas { 
+            display: block;
+            width: 100vw !important; 
+            height: 100vh !important; 
+            position: absolute; 
+            top: 0; 
+            left: 0; 
+            z-index: 1;
+        }
+        .stars-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle, rgba(255, 255, 255, 0.8) 1px, transparent 1px);
+            background-size: 10px 10px;
+            z-index: 0;
+            animation: twinkle 4s infinite linear;
+        }
+        @keyframes twinkle {
+            0% { opacity: 0.5; }
+            50% { opacity: 0.9; }
+            100% { opacity: 0.5; }
+        }
+        .info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-family: Arial, sans-serif;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 3;
+            font-size: 14px;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+</head>
+<body>
+    <div class="stars-bg"></div>
+    <div class="info">
+        xoay ngang màn hình và nhấn 2 lần ạ
+    </div>
+    
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.152.2/build/three.module.js",
+        "three/addons/controls/OrbitControls.js": "https://unpkg.com/three@0.152.2/examples/jsm/controls/OrbitControls.js",
+        "three/addons/loaders/FontLoader.js": "https://unpkg.com/three@0.152.2/examples/jsm/loaders/FontLoader.js",
+        "three/addons/geometries/TextGeometry.js": "https://unpkg.com/three@0.152.2/examples/jsm/geometries/TextGeometry.js"
+      }
+    }
+    </script>
+    
+    <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { FontLoader } from 'three/addons/loaders/FontLoader.js';
+    import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
+
+    // Scene setup
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 5000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor(0x000000);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    document.body.appendChild(renderer.domElement);
+
+    // Audio setup
+    const audioListener = new THREE.AudioListener();
+    camera.add(audioListener);
+    const sound = new THREE.Audio(audioListener);
+    const audioLoader = new THREE.AudioLoader();
+    let isPlaying = false;
+    let isAudioLoaded = false;
+
+    audioLoader.load(
+        'hh.mp3',
+        (buffer) => {
+            sound.setBuffer(buffer);
+            sound.setLoop(true);
+            sound.setVolume(0.5);
+            isAudioLoaded = true;
+            console.log('Audio loaded successfully');
+        },
+        undefined,
+        (error) => {
+            console.error('Failed to load audio:', error.message);
+        }
+    );
+
+    function toggleAudio() {
+        if (audioListener.context.state === 'suspended') {
+            audioListener.context.resume().then(() => {
+                console.log('Audio context resumed');
+                playAudio();
+            }).catch((err) => {
+                console.error('Failed to resume audio context:', err);
+            });
+        } else {
+            playAudio();
+        }
+    }
+
+    function playAudio() {
+        if (isAudioLoaded) {
+            try {
+                if (isPlaying) {
+                    sound.pause();
+                    isPlaying = false;
+                    console.log('Audio paused');
+                } else {
+                    sound.play();
+                    isPlaying = true;
+                    console.log('Audio playback started');
+                }
+            } catch (err) {
+                console.error('Audio playback failed:', err.message);
+            }
+        } else {
+            console.warn('Audio not yet loaded');
+        }
+    }
+
+    // Toggle audio on spacebar press
+    window.addEventListener('keydown', (event) => {
+        if (event.code === 'Space') {
+            event.preventDefault();
+            toggleAudio();
+            triggerCameraAnimation();
+        }
+    });
+
+    // Reset isPlaying when audio ends
+    sound.onEnded = () => {
+        isPlaying = false;
+        console.log('Audio playback ended');
+    };
+
+    // OrbitControls
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.minDistance = 50;    // khoảng cách gần nhất cho phép (càng nhỏ càng sát tâm)
+    controls.maxDistance = 1700;  // khoảng cách xa nhất (vượt quá thì không zoom ra thêm được)
+
+
+    // Add ambient light
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    scene.add(ambientLight);
+
+    // Add background particles
+    const particleCount = 1500;
+    const particlesGeometry = new THREE.BufferGeometry();
+    const posArray = new Float32Array(particleCount * 3);
+    const colorsArray = new Float32Array(particleCount * 3);
+    for (let i = 0; i < particleCount * 3; i += 3) {
+        posArray[i] = (Math.random() - 0.5) * 3000;
+        posArray[i + 1] = (Math.random() - 0.5) * 3000;
+        posArray[i + 2] = (Math.random() - 0.5) * 3000;
+        const color = new THREE.Color(
+            Math.random() * 0.5 + 0.5,
+            Math.random() * 0.3 + 0.7,
+            Math.random() * 0.5 + 0.5
+        );
+        colorsArray[i] = color.r;
+        colorsArray[i + 1] = color.g;
+        colorsArray[i + 2] = color.b;
+    }
+    particlesGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+    particlesGeometry.setAttribute('color', new THREE.BufferAttribute(colorsArray, 3));
+    const particleMaterial = new THREE.PointsMaterial({
+        size: 6,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.8
+    });
+    const particles = new THREE.Points(particlesGeometry, particleMaterial);
+    scene.add(particles);
+
+    // Add filled particle disk (radius 500)
+    const diskParticleCount = 35000;
+    const maxRadius = 500;
+    const diskHeightRange = 3;
+    const diskGeometry = new THREE.BufferGeometry();
+    const diskPosArray = new Float32Array(diskParticleCount * 3);
+    const diskColorsArray = new Float32Array(diskParticleCount * 3);
+    for (let i = 0; i < diskParticleCount * 3; i += 3) {
+        const radius = Math.sqrt(Math.random()) * maxRadius;
+        const angle = Math.random() * Math.PI * 2;
+        const height = (Math.random() - 0.5) * diskHeightRange * 2;
+        diskPosArray[i] = Math.cos(angle) * radius;
+        diskPosArray[i + 1] = height;
+        diskPosArray[i + 2] = Math.sin(angle) * radius;
+        const color = new THREE.Color(1.0, 0.8, 0.9);
+        diskColorsArray[i] = color.r;
+        diskColorsArray[i + 1] = color.g;
+        diskColorsArray[i + 2] = color.b;
+    }
+    diskGeometry.setAttribute('position', new THREE.BufferAttribute(diskPosArray, 3));
+    diskGeometry.setAttribute('color', new THREE.BufferAttribute(diskColorsArray, 3));
+    const diskMaterial = new THREE.PointsMaterial({
+        size: 0.7,
+        vertexColors: true,
+        transparent: true,
+        opacity: 1
+    });
+    const particleDisk = new THREE.Points(diskGeometry, diskMaterial);
+    scene.add(particleDisk);
+
+    // Add inner particle disk (radius 90)
+    const innerDiskParticleCount = 2900;
+    const innerMaxRadius = 90;
+    const innerDiskHeightRange = 5;
+    const innerDiskGeometry = new THREE.BufferGeometry();
+    const innerDiskPosArray = new Float32Array(innerDiskParticleCount * 3);
+    const innerDiskColorsArray = new Float32Array(innerDiskParticleCount * 3);
+    for (let i = 0; i < innerDiskParticleCount * 3; i += 3) {
+        const radius = Math.sqrt(Math.random()) * innerMaxRadius;
+        const angle = Math.random() * Math.PI * 2;
+        const height = (Math.random() - 0.5) * innerDiskHeightRange * 2;
+        innerDiskPosArray[i] = Math.cos(angle) * radius;
+        innerDiskPosArray[i + 1] = height;
+        innerDiskPosArray[i + 2] = Math.sin(angle) * radius;
+        const color = new THREE.Color(1.0, 0.8, 0.9);
+        innerDiskColorsArray[i] = color.r;
+        innerDiskColorsArray[i + 1] = color.g;
+        innerDiskColorsArray[i + 2] = color.b;
+    }
+    innerDiskGeometry.setAttribute('position', new THREE.BufferAttribute(innerDiskPosArray, 3));
+    innerDiskGeometry.setAttribute('color', new THREE.BufferAttribute(innerDiskColorsArray, 3));
+    const innerDiskMaterial = new THREE.PointsMaterial({
+        size: 0.7,
+        vertexColors: true,
+        transparent: true,
+        opacity: 1
+    });
+    const innerParticleDisk = new THREE.Points(innerDiskGeometry, innerDiskMaterial);
+    scene.add(innerParticleDisk);
+
+    // Add outermost particle disk (radius 500 to 550)
+    const outermostDiskParticleCount = 2000;
+    const outermostInnerRadius = 500;
+    const outermostOuterRadius = 550;
+    const outermostDiskHeightRange = 2;
+    const outermostDiskGeometry = new THREE.BufferGeometry();
+    const outermostDiskPosArray = new Float32Array(outermostDiskParticleCount * 3);
+    const outermostDiskColorsArray = new Float32Array(outermostDiskParticleCount * 3);
+    for (let i = 0; i < outermostDiskParticleCount * 3; i += 3) {
+        const radius = outermostInnerRadius + Math.random() * (outermostOuterRadius - outermostInnerRadius);
+        const angle = Math.random() * Math.PI * 2;
+        const height = (Math.random() - 0.5) * outermostDiskHeightRange * 2;
+        outermostDiskPosArray[i] = Math.cos(angle) * radius;
+        outermostDiskPosArray[i + 1] = height;
+        outermostDiskPosArray[i + 2] = Math.sin(angle) * radius;
+        const color = new THREE.Color(1.0, 0.8, 0.9);
+        outermostDiskColorsArray[i] = color.r;
+        outermostDiskColorsArray[i + 1] = color.g;
+        outermostDiskColorsArray[i + 2] = color.b;
+    }
+    outermostDiskGeometry.setAttribute('position', new THREE.BufferAttribute(outermostDiskPosArray, 3));
+    outermostDiskGeometry.setAttribute('color', new THREE.BufferAttribute(outermostDiskColorsArray, 3));
+    const outermostDiskMaterial = new THREE.PointsMaterial({
+        size: 0.7,
+        vertexColors: true,
+        transparent: true,
+        opacity: 1
+    });
+    const outermostParticleDisk = new THREE.Points(outermostDiskGeometry, outermostDiskMaterial);
+    scene.add(outermostParticleDisk);
+
+    // Add sphere with shader
+    const sphereGeometry = new THREE.SphereGeometry(30, 64, 64);
+    const sphereMaterial = new THREE.ShaderMaterial({
+        uniforms: {
+            uTime: { value: 0.0 }
+        },
+        vertexShader: `
+            varying vec2 vUv;
+            varying vec3 vNormal;
+            void main() {
+                vUv = uv;
+                vNormal = normalize(normalMatrix * normal);
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: `
+            uniform float uTime;
+            varying vec2 vUv;
+            varying vec3 vNormal;
+
+            float random(vec2 st) {
+                return fract(sin(dot(st.xy, vec2(12.9898, 78.233))) * 43758.5453123);
+            }
+
+            float noise(vec2 st) {
+                vec2 i = floor(st);
+                vec2 f = fract(st);
+                float a = random(i);
+                float b = random(i + vec2(1.0, 0.0));
+                float c = random(i + vec2(0.0, 1.0));
+                float d = random(i + vec2(1.0, 1.0));
+                vec2 u = f * f * (3.0 - 2.0 * f);
+                return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+            }
+
+            void main() {
+                vec2 uv = vUv;
+                float n = noise(uv * 3.0 + uTime * 0.1);
+                vec3 color = vec3(
+                    sin(n * 6.28 + uTime * 0.2) * 0.5 + 0.7,
+                    sin(n * 6.28 + uTime * 0.2 + 2.0) * 0.5 + 0.7,
+                    sin(n * 6.28 + uTime * 0.2 + 4.0) * 0.5 + 0.7
+                );
+
+                float twinkle = sin(uTime * 2.0 + n * 10.0) * 0.3 + 0.8;
+                color *= twinkle;
+
+                float intensity = dot(vNormal, vec3(0.0, 0.0, 1.0));
+                color *= mix(0.8, 1.2, intensity);
+
+                gl_FragColor = vec4(color, 1.0);
+            }
+        `,
+        side: THREE.DoubleSide
+    });
+    const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+    scene.add(sphere);
+
+    // Add atmosphere
+    const atmosphereGeometry = new THREE.SphereGeometry(31.2, 64, 64);
+    const atmosphereMaterial = new THREE.ShaderMaterial({
+        uniforms: { uTime: { value: 0.0 } },
+        vertexShader: `
+            varying vec3 vNormal;
+            void main() {
+                vNormal = normalize(normalMatrix * normal);
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: `
+            varying vec3 vNormal;
+            void main() {
+                float intensity = pow(0.7 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.0);
+                gl_FragColor = vec4(0.3, 0.6, 1.0, intensity * 0.6);
+            }
+        `,
+        side: THREE.BackSide,
+        transparent: true,
+        blending: THREE.AdditiveBlending
+    });
+    const atmosphere = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
+    scene.add(atmosphere);
+
+    // Create flower ring
+    const flowerRing = new THREE.Group();
+    scene.add(flowerRing);
+
+    const textureLoader = new THREE.TextureLoader();
+    const texture = textureLoader.load('coloannn.jpg',);
+
+    const flowerMaterial = new THREE.SpriteMaterial({
+        map: texture,
+        color: 0xffffff,
+        transparent: true,
+        opacity: 1
+    });
+
+    const numFlowers = 1600;
+    const innerRadius = 120;
+    const outerRadius = 500;
+    const heightRange = 10;
+    
+    for (let i = 0; i < numFlowers; i++) {
+        const sprite = new THREE.Sprite(flowerMaterial.clone());
+        const angle = Math.random() * Math.PI * 2;
+        const radius = innerRadius + Math.random() * (outerRadius - innerRadius);
+        const height = (Math.random() - 0.5) * heightRange * 2;
+
+        sprite.position.set(
+            Math.cos(angle) * radius,
+            height,
+            Math.sin(angle) * radius
+        );
+        
+        const size = 6.5 + Math.random() * 2;
+        sprite.scale.set(size, size, 1);
+        sprite.lookAt(0, height, 0);
+        sprite.material.opacity = 1;
+        
+        flowerRing.add(sprite);
+    }
+
+    // Add point lights
+    const light1 = new THREE.PointLight(0xffffff, 1, 500);
+    light1.position.set(100, 100, 100);
+    scene.add(light1);
+
+    const light2 = new THREE.PointLight(0xffffff, 0.5, 500);
+    light2.position.set(-100, -100, -100);
+    scene.add(light2);
+
+    // Define text material with fade effect
+    const textMaterial = new THREE.ShaderMaterial({
+        uniforms: {
+            fadeStartY: { value: 680.0 },
+            fadeRange: { value: 100.0 },
+        },
+        vertexShader: `
+            varying vec2 vUv;
+            varying float vYPos;
+            void main() {
+                vUv = uv;
+                vYPos = position.y;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: `
+            uniform float fadeStartY;
+            uniform float fadeRange;
+            varying float vYPos;
+            void main() {
+                float alpha = 1.0;
+                if (vYPos < fadeStartY) {
+                    alpha = smoothstep(fadeStartY - fadeRange, fadeStartY, vYPos);
+                }
+                gl_FragColor = vec4(1.0, 1.0, 1.0, alpha);
+            }
+        `,
+        transparent: true
+    });
+
+    // Load font and create orbiting text
+const fontLoader = new FontLoader();
+fontLoader.load('https://unpkg.com/three@0.152.2/examples/fonts/helvetiker_regular.typeface.json', (font) => {
+    const text1 = 'HAPPY BIRTHDAY HAPPY BIRTHDAY HAPPY BIRTHDAY HAPPY BIRTHDAY HAPPY BIRTHDAY HAPPY BIRTHDAY HAPPY BIRTHDAY HAPPY BIRTHDAY HAPPY BIRTHDAY  ';
+    const text2 = 'HAPPY BIRTHDAY HAPPY BIRTHDAY HAPPY BIRTHDAY HAPPY BIRTHDAY HAPPY BIRTHDAY HAPPY BIRTHDAY HAPPY BIRTHDAY HAPPY BIRTHDAY HAPPY BIRTHDAY ';
+    const text3 = 'HAPPY BIRTHDAY HAPPY BIRTHDAY HAPPY BIRTHDAY HAPPY BIRTHDAY HAPPY BIRTHDAY HAPPY BIRTHDAY HAPPY BIRTHDAY HAPPY BIRTHDAY HAPPY BIRTHDAY ';
+    const radius1 = 48;
+    const radius2 = 42;
+    const speed = 0.006;
+    const speed3 = 0.005;
+
+    const textRing1 = new THREE.Group();
+    const textRing2 = new THREE.Group();
+    const textRing3 = new THREE.Group();
+    scene.add(textRing1, textRing2, textRing3);
+
+    // Create text for Ring 1
+    for (let i = 0; i < text1.length; i++) {
+        const geometry = new TextGeometry(text1[i], {
+            font: font,
+            size: 1.8,
+            height: 0.3,
+            curveSegments: 12,
+            bevelEnabled: false
+        });
+        const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        const letter = new THREE.Mesh(geometry, material);
+        const angle = (i / text1.length) * Math.PI * 2;
+        letter.position.x = radius1 * Math.cos(angle);
+        letter.position.z = radius1 * Math.sin(angle);
+        letter.rotation.y = -angle - Math.PI / 2;
+        textRing1.add(letter);
+    }
+
+    // Create text for Ring 2
+    for (let i = 0; i < text2.length; i++) {
+        const geometry = new TextGeometry(text2[i], {
+            font: font,
+            size: 1.8,
+            height: 0.3,
+            curveSegments: 12,
+            bevelEnabled: false
+        });
+        const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        const letter = new THREE.Mesh(geometry, material);
+        const angle = (i / text2.length) * Math.PI * 2;
+        letter.position.x = radius2 * Math.cos(angle);
+        letter.position.z = radius2 * Math.sin(angle);
+        letter.rotation.y = -angle - Math.PI / 2;
+        textRing2.add(letter);
+    }
+
+    // Create text for Ring 3 - Vòng tròn xoay quanh tâm (0,0,0)
+    const letters3 = [];
+    const newRadius3 = Math.sqrt(780*780 + 680*680); // ≈ 1020
+    const startAngle = Math.atan2(680, 780); // Góc để bắt đầu từ điểm (780,680)
+
+    for (let i = 0; i < text3.length; i++) {
+        const geometry = new TextGeometry(text3[i], {
+            font: font,
+            size: 15,
+            height: 0.5,
+            curveSegments: 12,
+            bevelEnabled: false
+        });
+        
+        const letter = new THREE.Mesh(geometry, textMaterial.clone());
+        const angle = startAngle + (i / text3.length) * Math.PI * 2;
+        
+        letter.position.x = newRadius3 * Math.cos(angle);
+        letter.position.y = newRadius3 * Math.sin(angle);
+        letter.position.z = 0;
+        
+        letter.rotation.z = angle + Math.PI/2;
+        
+        letter.userData = {
+            initialAngle: angle,
+            index: i
+        };
+        
+        textRing3.add(letter);
+        letters3.push(letter);
+    }
+
+    // Tilt rings for X-shape
+    textRing1.rotation.z = Math.PI / 4;
+    textRing2.rotation.z = -Math.PI / 4;
+    textRing3.rotation.z = Math.PI / 4;
+
+    // Animation loop
+    function animate(time) {
+        requestAnimationFrame(animate);
+
+        particles.rotation.y += 0.001;
+        sphere.rotation.y += 0.01;
+        sphere.rotation.x += 0.005;
+        sphereMaterial.uniforms.uTime.value = time * 0.001;
+        atmosphereMaterial.uniforms.uTime.value = time * 0.001;
+
+        // Rotate text rings
+        textRing1.rotation.y += speed;
+        textRing2.rotation.y -= speed;
+
+        // Animate individual letters in textRing3
+        for (let i = 0; i < letters3.length; i++) {
+            const letter = letters3[i];
+            const angle = letter.userData.initialAngle + time * 0.001 * speed3;
+            
+            letter.position.x = newRadius3 * Math.cos(angle);
+            letter.position.y = newRadius3 * Math.sin(angle);
+            letter.position.z = 0;
+            
+            letter.rotation.z = angle + Math.PI/2;
+        }
+
+        // Rotate flower ring
+        flowerRing.rotation.y += 0.002;
+
+        // Rotate particle disks
+        particleDisk.rotation.y += 0.003;
+        innerParticleDisk.rotation.y += 0.003;
+        outermostParticleDisk.rotation.y += 0.003;
+
+        controls.update();
+        renderer.render(scene, camera);
+    }
+    animate(0);
+});
+
+    // Camera setup
+    camera.position.set(0, 5, 60);
+    camera.lookAt(0, 0, 0);
+
+    // Handle window resize
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // Camera animation setup
+    let isAnimating = false;
+    let lastTapTime = 0;
+    let lastTapPos = { x: 0, y: 0 };
+    const doubleTapDelay = 300;
+    const doubleTapDistance = 30;
+
+    function triggerCameraAnimation() {
+    if (isAnimating) return;
+    isAnimating = true;
+    controls.enabled = false;
+
+    gsap.to(camera.position, {
+        x: 0,
+        y: 10,
+        z: 100,
+        duration: 3,
+        ease: 'power2.inOut',
+        onUpdate: () => camera.lookAt(0, 0, 0),
+        onComplete: () => {
+            gsap.to(camera.position, {
+                x: 0,
+                y: 12,
+                z: 170,
+                duration: 4,
+                ease: 'power2.inOut',
+                onUpdate: () => camera.lookAt(0, 0, 0),
+                onComplete: () => {
+                    gsap.to(camera.position, {
+                        x: 0,
+                        y: 20,
+                        z: 600,
+                        duration: 11,
+                        ease: 'power2.inOut',
+                        onUpdate: () => camera.lookAt(0, 0, 0),
+                        onComplete: () => {
+                            gsap.to(camera.position, {
+                                x: -100,
+                                y: 160,
+                                z: -600,
+                                duration: 6,
+                                ease: 'power2.inOut',
+                                onUpdate: () => camera.lookAt(0, 0, 0),
+                                onComplete: () => {
+                                    isAnimating = false;
+                                    controls.enabled = true;
+                                }
+                            });
+                        }
+                    });
+                }
+            });
+        }
+    });
+}
+
+
+    // Double-click handler for desktop
+    window.addEventListener('dblclick', (event) => {
+        event.preventDefault();
+        toggleAudio();
+        triggerCameraAnimation();
+    });
+
+    // Double-tap handler for mobile
+    window.addEventListener('touchstart', (event) => {
+        if (event.touches.length === 1) {
+            event.preventDefault();
+            const currentTime = new Date().getTime();
+            const tapPos = { x: event.touches[0].clientX, y: event.touches[0].clientY };
+            const timeSinceLastTap = currentTime - lastTapTime;
+            const distance = Math.sqrt(
+                Math.pow(tapPos.x - lastTapPos.x, 2) + Math.pow(tapPos.y - lastTapPos.y, 2)
+            );
+
+            if (timeSinceLastTap <= doubleTapDelay && distance < doubleTapDistance) {
+                toggleAudio();
+                triggerCameraAnimation();
+            }
+
+            lastTapTime = currentTime;
+            lastTapPos = tapPos;
+        }
+    });
+    </script>
+</body>
+</html>
